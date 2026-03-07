@@ -1,0 +1,20 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+        'curl=8.14.1-*' \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu \
+    huggingface-hub==1.5.0 \
+    torch==2.5.1+cpu \
+    stanza==1.11.1
+
+COPY .env .
+COPY scripts/download_models.sh /app/download_models.sh
+
+RUN chmod +x /app/download_models.sh && mkdir -p /app/models
+
+CMD ["/bin/bash"]

@@ -1,0 +1,85 @@
+services:
+  model-downloader:
+    build:
+      context: .
+      dockerfile: Dockerfile.model-downloader
+    container_name: ner-model-downloader
+    env_file:
+      - .env
+    volumes:
+      - ./models:/app/models
+    command: ["/app/download_models.sh"]
+    networks:
+      - ner-network
+    profiles:
+      - downloader
+  neo4j:
+    image: neo4j:5.14.0
+    container_name: ner-neo4j
+    ports:
+      - "0.0.0.0:8474:7474"
+      - "8687:7687"
+    environment:
+      - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --timeout=2 http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    networks:
+      - ner-network
+    restart: unless-stopped
+  llamacpp:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: ner-llamacpp
+    ports:
+      - "0.0.0.0:8075:8080"
+    volumes:
+      - ./models/${LLM_MODEL}:/models:ro
+    command: >
+      -m /models/${LLM_FILE} --host 0.0.0.0 --port 8080 --ctx-size 2048 -ngl 0
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - ner-network
+    restart: unless-stopped
+  ner-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ner-app
+    ports:
+      - "0.0.0.0:${APP_PORT}:8011"
+    env_file:
+      - .env
+    volumes:
+      - ./app:/app/app
+      - ./models:/app/models
+      - ./app/static:/app/app/static
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      llamacpp:
+        condition: service_healthy
+    networks:
+      - ner-network
+    restart: unless-stopped
+volumes:
+  neo4j_data:
+  neo4j_logs:
+networks:
+  ner-network:
+    driver: bridge
