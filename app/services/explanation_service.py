@@ -50,7 +50,7 @@ class ExplanationService:
         related_texts = TextRepository.get_texts_by_entity(
             entity_id, limit=ENTITY_EXPLANATION_DOCUMENTS_RETURNED_COUNT
         )
-        logger.info(f"> Found {len(related_texts)} texts for entity explanation")
+        logger.info(f"Found {len(related_texts)} texts for to explain entity '{entity_name}'")
 
         user_prompt_parts = [f'Entity: "{entity_name}"']
         if category_name:

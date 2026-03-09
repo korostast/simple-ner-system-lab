@@ -63,3 +63,15 @@ class TextRepository:
         params = {"entity_id": entity_id, "limit": limit}
 
         return neo4j_client.execute_query(query, params)
+
+    @staticmethod
+    def list_all(limit: int = 1000) -> list[dict[str, Any]]:
+        """Get all texts from the database"""
+        query = """
+        MATCH (t:Text)
+        RETURN t
+        LIMIT $limit
+        """
+        params = {"limit": limit}
+
+        return neo4j_client.execute_query(query, params)

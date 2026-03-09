@@ -100,11 +100,13 @@ async def delete_category(category_id: str):
 
 @router.post("/{category_id}/assign", response_model=MessageResponse)
 async def auto_assign_entities(category_id: str):
-    """Auto-assign entities to a category based on NER predictions"""
+    """Auto-assign entities to a category by re-parsing all texts in the knowledge base"""
     try:
         result = category_service.auto_assign_entities(category_id)
         return MessageResponse(
-            message=f"Auto-assigned {result['assigned_count']} entities to category {result['category_name']}"
+            message=f"Processed {result['texts_processed']} texts, "
+            f"created {result['entities_created']} new entities, "
+            f"assigned {result['entities_assigned']} existing entities to category {result['category_name']}"
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

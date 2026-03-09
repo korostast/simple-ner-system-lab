@@ -44,7 +44,6 @@ class APILLMProvider:
                 top_p=settings.llm_top_p,
             )
 
-            logger.info(f"> Full response: {response}")
             explanation = response.choices[0].message.content.strip()
             logger.info(f"Generated API explanation for '{word}': '{explanation}'")
             return explanation

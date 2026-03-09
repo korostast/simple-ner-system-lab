@@ -154,12 +154,26 @@ class EntityRepository:
         query = """
         MATCH (e:Entity {id: $id})
         OPTIONAL MATCH (e)-[:BELONGS_TO]->(c:Category)
+        WITH e, collect(DISTINCT c) AS categories
+
         OPTIONAL MATCH (t:Text)-[:MENTIONED_IN]->(e)
+        WITH e, categories, t
+
         OPTIONAL MATCH (t)-[:MENTIONED_IN]->(e2:Entity)
         WHERE e2.id <> $id
+        WITH e, categories, t, e2
+
         OPTIONAL MATCH (e2)-[:BELONGS_TO]->(c2:Category)
-        RETURN e, c, collect(DISTINCT t) as texts,
-               collect(DISTINCT {entity: e2, category: c2}) as other_entities
+        WITH e, categories, t, e2, collect(DISTINCT c2) AS oe_categories
+
+        WITH e, categories, 
+            collect(DISTINCT t) AS texts,
+            collect(DISTINCT CASE 
+                WHEN e2 IS NOT NULL 
+                THEN {entity: e2, categories: oe_categories} 
+            END) AS other_entities_with_cats
+
+        RETURN e, categories, texts, other_entities_with_cats
         """
         results = neo4j_client.execute_query(query, {"id": entity_id})
 
@@ -168,11 +182,11 @@ class EntityRepository:
 
         result = results[0]
         entity = result["e"]
-        category = result.get("c")
+        categories = result["categories"]
         texts = result["texts"]
         secondary_entities = [
             secondary_entity
-            for secondary_entity in result["other_entities"]
+            for secondary_entity in result["other_entities_with_cats"]
             if secondary_entity["entity"] is not None
         ]
 
@@ -192,11 +206,13 @@ class EntityRepository:
             edges.append(EntityRepository._create_edge(source_id, target_id, label))
 
         # 1. Entity node
-        main_entity_node = EntityRepository._create_entity_node(entity, category)
+        main_entity_node = EntityRepository._create_entity_node(
+            entity, categories[0] if categories else None
+        )
         __add_node(main_entity_node)
 
-        # 2. Category node
-        if category:
+        # 2. Category nodes - add all categories the entity belongs to
+        for category in categories:
             category_node = EntityRepository._create_category_node(category)
             __add_node(category_node)
             __add_edge(main_entity_node["data"]["id"], category_node["data"]["id"], "BELONGS_TO")
@@ -210,13 +226,15 @@ class EntityRepository:
         # 4. Second level of entities (all the entities related to all the texts)
         for secondary_entity in secondary_entities:
             other_entity = secondary_entity["entity"]
-            other_category = secondary_entity.get("category")
+            other_categories = secondary_entity.get("categories", [])
 
-            entity_node = EntityRepository._create_entity_node(other_entity, other_category)
+            entity_node = EntityRepository._create_entity_node(
+                other_entity, other_categories[0] if other_categories else None
+            )
             __add_node(entity_node)
 
-            # 4.1. Category
-            if other_category:
+            # 4.1. Categories - add all categories the secondary entity belongs to
+            for other_category in other_categories:
                 category_node = EntityRepository._create_category_node(other_category)
                 __add_node(category_node)
                 __add_edge(entity_node["data"]["id"], category_node["data"]["id"], "BELONGS_TO")

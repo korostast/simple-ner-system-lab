@@ -479,6 +479,11 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
             <button class="btn" onclick="addEntity()">Add Entity</button>
             <button class="btn btn-secondary" onclick="loadEntities()">Refresh List</button>
 
+            <div class="form-group" style="margin-top: 20px;">
+                <label for="entitySearchFilter">Search Entities</label>
+                <input type="text" id="entitySearchFilter" placeholder="Type to search entities by name..." oninput="filterEntities()">
+            </div>
+
             <div id="entityResults" class="results" style="display: none;">
                 <h3>Entities</h3>
                 <div id="entityList"></div>
@@ -502,6 +507,11 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
 
             <button class="btn" onclick="addCategory()">Add Category</button>
             <button class="btn btn-secondary" onclick="loadCategories()">Refresh List</button>
+
+            <div class="form-group" style="margin-top: 20px;">
+                <label for="categorySearchFilter">Search Categories</label>
+                <input type="text" id="categorySearchFilter" placeholder="Type to search categories by name..." oninput="filterCategories()">
+            </div>
 
             <div id="categoryResults" class="results" style="display: none;">
                 <h3>Categories</h3>
@@ -673,6 +683,9 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
             document.getElementById('entityDescription').value = '';
         }
 
+        // Store all entities for filtering
+        let allEntitiesList = [];
+
         // Load entities
         async function loadEntities() {
             try {
@@ -680,7 +693,8 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
                 const data = await response.json();
 
                 if (response.ok) {
-                    displayEntities(data);
+                    allEntitiesList = data;
+                    displayEntities(allEntitiesList);
                 } else {
                     showError('Failed to load entities');
                 }
@@ -715,6 +729,25 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
             }
 
             resultsDiv.style.display = 'block';
+        }
+
+        // Filter entities by name
+        let filterTimeout;
+
+        function filterEntities() {
+            clearTimeout(filterTimeout);
+            const searchTerm = document.getElementById('entitySearchFilter').value.trim();
+
+            filterTimeout = setTimeout(() => {
+                if (searchTerm) {
+                    const filtered = allEntitiesList.filter(entity =>
+                        entity.name.toLowerCase().includes(searchTerm.toLowerCase())
+                    );
+                    displayEntities(filtered);
+                } else {
+                    displayEntities(allEntitiesList);
+                }
+            }, 300);
         }
 
         // Delete entity
@@ -772,6 +805,9 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
             document.getElementById('categoryDescription').value = '';
         }
 
+        // Store all categories for filtering
+        let allCategoriesList = [];
+
         // Load categories
         async function loadCategories() {
             try {
@@ -779,8 +815,9 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
                 const data = await response.json();
 
                 if (response.ok) {
-                    displayCategories(data);
-                    updateCategorySelect(data);
+                    allCategoriesList = data;
+                    displayCategories(allCategoriesList);
+                    updateCategorySelect(allCategoriesList);
                 } else {
                     showError('Failed to load categories');
                 }
@@ -815,6 +852,25 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
             }
 
             resultsDiv.style.display = 'block';
+        }
+
+        // Filter categories by name
+        let categoryFilterTimeout;
+
+        function filterCategories() {
+            clearTimeout(categoryFilterTimeout);
+            const searchTerm = document.getElementById('categorySearchFilter').value.trim();
+
+            categoryFilterTimeout = setTimeout(() => {
+                if (searchTerm) {
+                    const filtered = allCategoriesList.filter(category =>
+                        category.name.toLowerCase().includes(searchTerm.toLowerCase())
+                    );
+                    displayCategories(filtered);
+                } else {
+                    displayCategories(allCategoriesList);
+                }
+            }, 300);
         }
 
         function updateCategorySelect(categories) {
@@ -1023,7 +1079,8 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error';
             errorDiv.textContent = message;
-            document.querySelector('.tab-content.active').appendChild(errorDiv);
+            const activeTab = document.querySelector('.tab-content.active');
+            activeTab.insertBefore(errorDiv, activeTab.firstChild);
 
             setTimeout(() => errorDiv.remove(), 5000);
         }
@@ -1035,7 +1092,8 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
             const successDiv = document.createElement('div');
             successDiv.className = 'success';
             successDiv.textContent = message;
-            document.querySelector('.tab-content.active').appendChild(successDiv);
+            const activeTab = document.querySelector('.tab-content.active');
+            activeTab.insertBefore(successDiv, activeTab.firstChild);
 
             setTimeout(() => successDiv.remove(), 3000);
         }
@@ -1047,11 +1105,15 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
 
         // Graph Modal Functions
         let cy = null;
+        let selectedEntityId = null;
 
         function openGraphModal(entityId) {
             const modal = document.getElementById('graphModal');
             const graphContainer = document.getElementById('graphContainer');
             const nodeDetailsPanel = document.getElementById('nodeDetailsPanel');
+
+            // Store the selected entity ID
+            selectedEntityId = entityId;
 
             // Clear previous graph
             if (cy) {
@@ -1078,6 +1140,9 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
                 cy.destroy();
                 cy = null;
             }
+
+            // Reset selected entity ID
+            selectedEntityId = null;
         }
 
         async function loadEntityGraph(entityId) {
@@ -1175,6 +1240,14 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
                             }
                         },
                         {
+                            selector: 'node.selected',
+                            style: {
+                                'border-width': '4px',
+                                'border-color': '#dc3545',
+                                'border-opacity': '1'
+                            }
+                        },
+                        {
                             selector: 'edge',
                             style: {
                                 'width': 2,
@@ -1226,6 +1299,16 @@ ATTENTION (is all you need): this file is (almost) fully AI-generated
                         document.getElementById('nodeDetailsPanel').classList.remove('visible');
                     }
                 });
+
+                // Highlight the selected entity with red border
+                if (selectedEntityId) {
+                    cy.ready(function() {
+                        const selectedNode = cy.$(`node[id="${selectedEntityId}"]`);
+                        if (selectedNode.length > 0) {
+                            selectedNode.addClass('selected');
+                        }
+                    });
+                }
             } catch (error) {
                 console.error('Error rendering graph:', error);
                 graphContainer.innerHTML = '<p style="padding: 20px; text-align: center; color: #dc3545;">Error rendering graph: ' + error.message + '</p>';
