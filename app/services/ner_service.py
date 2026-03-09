@@ -112,7 +112,8 @@ class NERService:
                 # We couldn't determine language. Maybe text consists of just symbols
                 text_language = "en"
 
-            logger.info(f"> Language: {text_language}")
+            logger.info(f"Detected language: {text_language}")
+            unique_entities = {}
             for entity in entities:
                 if text_language in ["en", "ru"]:
                     # Stanza lemmatization
@@ -130,19 +131,25 @@ class NERService:
                         lemmas = simplemma.text_lemmatizer(entity["text"], lang="en", greedy=True)
 
                 normalized_text = " ".join(lemmas)
+                entity_key = (normalized_text, entity["label"])
+                confidence = entity.get("score", 0.0)
 
-                formatted_entities.append(
-                    {
+                # Keep the entity with the highest confidence score
+                if (
+                    entity_key not in unique_entities
+                    or confidence > unique_entities[entity_key]["confidence"]
+                ):
+                    unique_entities[entity_key] = {
                         "text": normalized_text,
                         "original_text": entity["text"],
                         "label": entity["label"],
                         "start": entity["start"],
                         "end": entity["end"],
-                        "confidence": entity.get("score", 0.0),
+                        "confidence": confidence,
                     }
-                )
 
-            logger.info(f"Detected {len(formatted_entities)} entities in text")
+            formatted_entities = list(unique_entities.values())
+            logger.info(f"Detected {len(formatted_entities)} unique entities in text")
             return formatted_entities
 
         except Exception as e:

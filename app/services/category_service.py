@@ -49,7 +49,8 @@ class CategoryService:
 
     @staticmethod
     def auto_assign_entities(category_id: str) -> dict[str, Any]:
-        """Auto-assign entities to a category based on NER predictions"""
+        """Auto-assign entities to a category by re-parsing all texts in the knowledge base"""
+        from app.repositories.text_repository import TextRepository
         from app.services.ner_service import ner_service
 
         category = CategoryRepository.get_by_id(category_id)
@@ -58,36 +59,53 @@ class CategoryService:
 
         category_name = category["c"]["name"]
 
-        all_entities = EntityRepository.list_all(limit=1000)
+        all_texts = TextRepository.list_all(limit=1000)
 
         assigned_count = 0
-        for entity_data in all_entities:
-            entity = entity_data["e"]
-            entity_id = entity["id"]
-            entity_name = entity["name"]
+        texts_processed = 0
+        entities_created = 0
 
-            # Use GLiNER to predict if entity belongs to this category
+        for text_data in all_texts:
+            text = text_data["t"]
+            text_id = text["id"]
+            text_content = text["content"]
+
+            texts_processed += 1
+
+            # Use GLiNER to predict entities in this text for the specific category
             try:
-                # Predict entity's category
-                predictions = ner_service.predict_entities(
-                    entity_name, labels=[category_name], threshold=0.3
-                )
+                predictions = ner_service.predict_entities(text_content, labels=[category_name])
 
-                # If prediction matches, assign entity to category
-                if predictions and predictions[0]["label"] == category_name:
-                    CategoryRepository.assign_entity_to_category(entity_id, category_id)
-                    assigned_count += 1
-                    logger.info(f"Assigned entity {entity_name} to category {category_name}")
+                for prediction in predictions:
+                    entity_name = prediction["text"]
+                    entity = EntityRepository.get_by_name(entity_name)
+                    if not entity:
+                        entity_id = EntityRepository.create(entity_name, category_id)
+                        entities_created += 1
+                        logger.info(f"Created entity {entity_name} in category {category_name}")
+                    else:
+                        entity_id = entity["e"]["id"]
+                        CategoryRepository.assign_entity_to_category(entity_id, category_id)
+                        assigned_count += 1
+                        logger.info(f"Assigned entity {entity_name} to category {category_name}")
+
+                    TextRepository.add_entity_mention(text_id, entity_id, role="mentioned")
 
             except Exception as e:
-                logger.warning(f"Failed to auto-assign entity {entity_name}: {e}")
+                logger.warning(f"Failed to process text {text_id}: {e}")
 
-        logger.info(f"Auto-assigned {assigned_count} entities to category {category_name}")
+        logger.info(
+            f"Auto-assign completed: processed {texts_processed} texts, "
+            f"created {entities_created} new entities, "
+            f"assigned {assigned_count} existing entities to category {category_name}"
+        )
 
         return {
             "category_id": category_id,
             "category_name": category_name,
-            "assigned_count": assigned_count,
+            "texts_processed": texts_processed,
+            "entities_created": entities_created,
+            "entities_assigned": assigned_count,
         }
 
 
